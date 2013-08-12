@@ -7,6 +7,8 @@ class Map
     @players_to_size_ratio = 10
     @planets_to_players_ratio = 10
     @between_hws = 30
+    @dw_to_hw_min = 5
+    @dw_to_hw_max = 15
     @planet_radius = 0.001
     @players_count = 30
     @players = []
@@ -16,6 +18,7 @@ class Map
       send("#{parameter}=", args[parameter]) if args[parameter]
     end
     @planets_count = @players_count * @planets_to_players_ratio
+    @planets_to_place = @planets_count
     @size = @players_count * @players_to_size_ratio
     generate_map
   end
@@ -79,6 +82,8 @@ class Map
 
     place_HWs_DWs
 
+    puts "Planets left to place: #{@planets_to_place} out of #{@planets_count}"
+
     puts "Done."
   end
 
@@ -103,22 +108,14 @@ class Map
         end
       end
       if placed
-        @planets << Planet.new(x: x, y: y, size: 1000, richness: 10, owner: player, is_hw: true)
+        add_planet(x: x, y: y, size: 1000, richness: 10, owner: player, is_hw: true)
         puts "#{player} HW's x, y = #{x}, #{y}"
       else
         raise "Couldn't place HW"
       end
       # Place DWs
-      range = 5 + (SecureRandom.random_number * 10)
-      angle = SecureRandom.random_number * 360
-      dwx = x + (range * Math.cos(angle))
-      dwy = y + (range * Math.sin(angle))
-      @planets << Planet.new(x: dwx, y: dwy, size: 500, richness: 10, owner: player, is_hw: false)
-      range = 5 + (SecureRandom.random_number * 10)
-      angle = SecureRandom.random_number * 360
-      dwx = x + (range * Math.cos(angle))
-      dwy = y + (range * Math.sin(angle))
-      @planets << Planet.new(x: dwx, y: dwy, size: 500, richness: 10, owner: player, is_hw: false)
+      place_DW(player, x, y)
+      place_DW(player, x, y)
     end
   end
 
@@ -130,4 +127,16 @@ class Map
     return true
   end
 
+  def place_DW(player, x, y)
+    range = @dw_to_hw_min + (SecureRandom.random_number * (@dw_to_hw_max - @dw_to_hw_min))
+    angle = SecureRandom.random_number * 360
+    dwx = x + (range * Math.cos(angle))
+    dwy = y + (range * Math.sin(angle))
+    add_planet(x: dwx, y: dwy, size: 500, richness: 10, owner: player, is_hw: false)
+  end
+
+  def add_planet(args)
+    @planets << Planet.new(args)
+    @planets_to_place -= 1
+  end
 end
