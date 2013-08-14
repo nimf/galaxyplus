@@ -182,4 +182,21 @@ class Map
     return true
   end
 
+  def stats
+    resp = "Players: #{@players.size}\n"
+    planets_count = 0
+    stat = {}
+    @planets.each do |planet|
+      next if planet.kind == :hw || planet.kind == :dw
+      stat[planet.kind] = stat[planet.kind] ? stat[planet.kind] + 1 : 1
+      planets_count +=1
+    end
+    resp << "Free planets total: #{planets_count}\n"
+    resp << "Kind\t\tCount\tPercentage\n"
+    stat.each do |kind, count|
+      resp << "#{kind}\t\t#{count}\t#{(100 * count / planets_count).round(2)}\n"
+    end
+    resp
+  end
+
 end

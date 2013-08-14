@@ -8,4 +8,6 @@ require 'RMagick'
 
 map = Map.new
 
+puts map.stats
+
 map.draw(4).write("map.png")
