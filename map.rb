@@ -46,8 +46,8 @@ class Map
   def draw(zoom = 4)
     @zoom = zoom
 
-    img = Magick::ImageList.new
-    img.new_image(zoomed(@size), zoomed(@size))
+    img = Magick::Image.new(zoomed(@size), zoomed(@size))
+    img.background_color = '#FFFFFF'
 
     brush = {
       hw: Magick::Draw.new,
@@ -59,21 +59,25 @@ class Map
       superbig: Magick::Draw.new
     }
 
-    brush[:hw].fill('#003366')
-    brush[:dw].fill('#003366')
-    brush[:asteroid].fill('#000000')
-    brush[:small].fill('#FF3300')
-    brush[:regular].fill('#FF9900')
-    brush[:big].fill('#009933')
-    brush[:superbig].fill('#00CC99')
+    brush[:hw].fill '#00336699'
+    brush[:dw].fill '#00336699'
+    brush[:asteroid].fill '#00000099'
+    brush[:small].fill '#FF330099'
+    brush[:regular].fill '#FF990099'
+    brush[:big].fill '#00993399'
+    brush[:superbig].fill '#00CC9999'
 
     hw_area = Magick::Draw.new
-    hw_area.fill('#DDEEFF')
-    # cir.stroke('black').stroke_width(1)
+    hw_area.fill('#DDEEFF99')
 
     @planets.each do |planet|
       draw_circle_looped(img, hw_area, planet.x, planet.y, @restrictions[:distance][:hw] / 2) if planet.is_hw?
       draw_circle_looped(img, brush[planet.kind], planet.x, planet.y, get_planet_radius(planet.size))
+    end
+
+    hw_area.draw(img)
+    brush.each do |k, v|
+      v.draw(img)
     end
 
     img
@@ -85,7 +89,7 @@ class Map
 
   def get_planet_radius(size)
     radius = size * @planet_radius
-    return 0.5 if radius < 0.5
+    return 0.5 / @zoom if radius < 0.5 / @zoom
     radius
   end
 
@@ -100,12 +104,10 @@ class Map
   def draw_circle_looped(img, drawing, x, y, radius)
     draw_looped(x, y) do |cur_x, cur_y|
       draw_circle(drawing, cur_x, cur_y, radius)
-      drawing.draw(img)
     end
   end
 
   def draw_circle(drawing, x, y, radius)
-    # puts "x=#{x} y=#{y} r=#{radius}"
     drawing.circle(zoomed(x), zoomed(y), zoomed(x + radius), zoomed(y))
   end
 
