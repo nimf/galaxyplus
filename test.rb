@@ -8,4 +8,4 @@ require 'RMagick'
 
 map = Map.new
 
-map.draw(4).write("map.gif")
+map.draw(4).write("map.png")

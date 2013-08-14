@@ -1,19 +1,31 @@
 class Map
   attr_accessor :size, :players_count, :players, :planets_count, :planets,
-    :zoom, :between_hws, :players_to_size_ratio, :planets_to_players_ratio
+    :zoom, :restrictions, :players_to_size_ratio, :planets_to_players_ratio
 
   def initialize(args = {})
+    @planets_probability = {
+      0  ... 8   => {size: 0..0,       richness: 0..0,  kind: :asteroid}, # 8%
+      8  ... 26  => {size: 0..500,     richness: 5..25, kind: :small},    # 18%
+      26 ... 76  => {size: 0..1000,    richness: 0..10, kind: :regular},  # 50%
+      76 ... 94  => {size: 1000..2000, richness: 1..10, kind: :big},      # 18%
+      94 ... 100 => {size: 1500..2500, richness: 0..3,  kind: :superbig}  # 6%
+    }
     @zoom = 4
     @players_to_size_ratio = 10
     @planets_to_players_ratio = 10
-    @between_hws = 30
+    @restrictions = {}
+    @restrictions[:distance] = {
+      :hw => 30,
+      :big => 10,
+      :superbig => 20
+    }
     @dw_to_hw_min = 5
     @dw_to_hw_max = 15
     @planet_radius = 0.001
     @players_count = 30
     @players = []
     @planets = []
-    [:players_count, :between_hws, :players_to_size_ratio,
+    [:players_count, :restrictions, :players_to_size_ratio,
       :planets_to_players_ratio].each do |parameter|
       send("#{parameter}=", args[parameter]) if args[parameter]
     end
@@ -37,16 +49,31 @@ class Map
     img = Magick::ImageList.new
     img.new_image(zoomed(@size), zoomed(@size))
 
+    brush = {
+      hw: Magick::Draw.new,
+      dw: Magick::Draw.new,
+      asteroid: Magick::Draw.new,
+      small: Magick::Draw.new,
+      regular: Magick::Draw.new,
+      big: Magick::Draw.new,
+      superbig: Magick::Draw.new
+    }
+
+    brush[:hw].fill('#003366')
+    brush[:dw].fill('#003366')
+    brush[:asteroid].fill('#000000')
+    brush[:small].fill('#FF3300')
+    brush[:regular].fill('#FF9900')
+    brush[:big].fill('#009933')
+    brush[:superbig].fill('#00CC99')
+
     hw_area = Magick::Draw.new
     hw_area.fill('#DDEEFF')
     # cir.stroke('black').stroke_width(1)
 
-    planet_brush = Magick::Draw.new
-    planet_brush.fill('#003366')
-
     @planets.each do |planet|
-      draw_circle_looped(img, hw_area, planet.x, planet.y, @between_hws / 2) if planet.is_hw?
-      draw_circle_looped(img, planet_brush, planet.x, planet.y, planet.size * @planet_radius)
+      draw_circle_looped(img, hw_area, planet.x, planet.y, @restrictions[:distance][:hw] / 2) if planet.is_hw?
+      draw_circle_looped(img, brush[planet.kind], planet.x, planet.y, get_planet_radius(planet.size))
     end
 
     img
@@ -54,6 +81,12 @@ class Map
 
   def zoomed(arg)
     arg * @zoom
+  end
+
+  def get_planet_radius(size)
+    radius = size * @planet_radius
+    return 0.5 if radius < 0.5
+    radius
   end
 
   def draw_looped(x, y, &block)
@@ -72,7 +105,8 @@ class Map
   end
 
   def draw_circle(drawing, x, y, radius)
-     drawing.circle(zoomed(x), zoomed(y), zoomed(x + radius), zoomed(y))
+    # puts "x=#{x} y=#{y} r=#{radius}"
+    drawing.circle(zoomed(x), zoomed(y), zoomed(x + radius), zoomed(y))
   end
 
   def generate_map
@@ -83,6 +117,8 @@ class Map
     place_HWs_DWs
 
     puts "Planets left to place: #{@planets_to_place} out of #{@planets_count}"
+
+    @planets_to_place.times { add_random_planet }
 
     puts "Done."
   end
@@ -95,48 +131,55 @@ class Map
 
   def place_HWs_DWs
     @players.each do |player|
-      placed = false
-      x = nil
-      y = nil
-      100.downto 0  do |try|
-        puts "try #{try}"
-        x = (SecureRandom.random_number * @size).round 2
-        y = (SecureRandom.random_number * @size).round 2
-        if hw_can_be_placed_at(x, y)
-          placed = true
-          break
-        end
-      end
-      if placed
-        add_planet(x: x, y: y, size: 1000, richness: 10, owner: player, is_hw: true)
-        puts "#{player} HW's x, y = #{x}, #{y}"
-      else
-        raise "Couldn't place HW"
-      end
-      # Place DWs
-      place_DW(player, x, y)
-      place_DW(player, x, y)
+      x, y = get_coords_for_new :hw
+      add_planet(x: x, y: y, kind: :hw, size: 1000, richness: 10, owner: player)
+      puts "#{player} HW's x, y = #{x}, #{y}"
+      2.times { place_DW(player, x, y) }
     end
-  end
-
-  def hw_can_be_placed_at(x, y)
-    @planets.each do |planet|
-      puts distance_between(planet.x, planet.y, x, y) if planet.is_hw
-      return false if planet.is_hw && distance_between(planet.x, planet.y, x, y) <= @between_hws
-    end
-    return true
   end
 
   def place_DW(player, x, y)
     range = @dw_to_hw_min + (SecureRandom.random_number * (@dw_to_hw_max - @dw_to_hw_min))
     angle = SecureRandom.random_number * 360
-    dwx = x + (range * Math.cos(angle))
-    dwy = y + (range * Math.sin(angle))
-    add_planet(x: dwx, y: dwy, size: 500, richness: 10, owner: player, is_hw: false)
+    dwx = (x + (range * Math.cos(angle))).round 2
+    dwy = (y + (range * Math.sin(angle))).round 2
+    add_planet(x: dwx, y: dwy, kind: :dw, size: 500, richness: 10, owner: player)
   end
 
   def add_planet(args)
     @planets << Planet.new(args)
+    puts "New planet: #{args[:kind]} [#{args[:x]}, #{args[:y]}] #{args[:size]}"
     @planets_to_place -= 1
   end
+
+  def add_random_planet
+    dice = SecureRandom.random_number * 100
+    chosen = @planets_probability.find { |r| r[0].cover? dice }[1]
+    delta_size = chosen[:size].end - chosen[:size].begin
+    size = (chosen[:size].begin + SecureRandom.random_number * delta_size).round 2
+    delta_rich = chosen[:richness].end - chosen[:richness].begin
+    richness = (chosen[:richness].begin + SecureRandom.random_number * delta_rich).round 2
+    x, y = get_coords_for_new chosen[:kind]
+    add_planet(x: x, y: y, kind: chosen[:kind], size: size, richness: richness)
+  end
+
+  def get_coords_for_new(kind)
+    100.downto 0  do |try|
+      x = (SecureRandom.random_number * @size).round 2
+      y = (SecureRandom.random_number * @size).round 2
+      return [x, y] if can_place_planet_at?(x, y, kind)
+    end
+    raise "Could not place planet"
+  end
+
+  def can_place_planet_at?(x, y, kind)
+    return true unless [:hw, :big, :superbig].include? kind
+    @planets.each do |planet|
+      if planet.kind == :hw || planet.kind == kind
+        return false if distance_between(planet.x, planet.y, x, y) <= @restrictions[:distance][kind]
+      end
+    end
+    return true
+  end
+
 end
