@@ -6,7 +6,9 @@ require './map.rb'
 require 'RMagick'
 
 
-map = Map.new(non_overlapping_planets: true)
+map = Map.new(
+  non_overlapping_planets: true,
+  harder_distance_restrictions: true)
 
 puts map.stats
 

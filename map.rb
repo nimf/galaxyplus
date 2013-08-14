@@ -1,7 +1,8 @@
 class Map
   attr_accessor :size, :players_count, :players, :planets_count, :planets,
     :zoom, :restrictions, :players_to_size_ratio, :planets_to_players_ratio,
-    :non_overlapping_planets, :hw_size, :dw_size, :debug
+    :non_overlapping_planets, :hw_size, :dw_size,
+    :harder_distance_restrictions, :debug
 
   def initialize(args = {})
     @planets_probability = {
@@ -16,9 +17,9 @@ class Map
     @planets_to_players_ratio = 10
     @restrictions = {}
     @restrictions[:distance] = {
-      :hw => 30,
-      :big => 10,
-      :superbig => 20
+      hw: {hw: 30, big: 10, superbig: 20},
+      big: {hw: 10, big: 10},
+      superbig: {hw: 20, superbig: 20}
     }
     @hw_size = 1000
     @dw_size = 500
@@ -30,12 +31,19 @@ class Map
     @planets = []
     [:players_count, :restrictions, :players_to_size_ratio,
       :planets_to_players_ratio, :non_overlapping_planets,
-      :hw_size, :dw_size, :debug].each do |parameter|
+      :hw_size, :dw_size, :harder_distance_restrictions, :debug].each do |parameter|
       send("#{parameter}=", args[parameter]) if args[parameter]
     end
     @planets_count = @players_count * @planets_to_players_ratio
     @planets_to_place = @planets_count
     @size = @players_count * @players_to_size_ratio
+    if @harder_distance_restrictions
+      @restrictions[:distance] = {
+        hw: {hw: 30, big: 10, superbig: 20},
+        big: {hw: 10, big: 10, superbig: 10},
+        superbig: {hw: 20, superbig: 20, big: 10}
+      }
+    end
     log "Map properties:"
     log("=" * 50)
     [:size, :players_count, :players, :planets_count, :planets,
@@ -87,7 +95,7 @@ class Map
     hw_area.fill('#DDEEFF99')
 
     @planets.each do |planet|
-      draw_circle_looped(img, hw_area, planet.x, planet.y, @restrictions[:distance][:hw] / 2) if planet.is_hw?
+      draw_circle_looped(img, hw_area, planet.x, planet.y, @restrictions[:distance][:hw][:hw] / 2) if planet.is_hw?
       draw_circle_looped(img, brush[planet.kind], planet.x, planet.y, get_planet_radius(planet.size))
     end
 
@@ -204,13 +212,11 @@ class Map
     log "can_place_planet_at? #{x} #{y} #{kind}"
     return true unless [:hw, :big, :superbig].include?(kind) || @non_overlapping_planets
     @planets.each do |planet|
-      if [:hw, :big, :superbig].include? kind
-        if planet.kind == :hw || planet.kind == kind
-          log "hw, big, superbig #{distance_between(planet.x, planet.y, x, y)} <= #{@restrictions[:distance][kind]}"
-          if distance_between(planet.x, planet.y, x, y) <= @restrictions[:distance][kind]
-            log "Restricted distance!"
-            return false
-          end
+      if [:hw, :big, :superbig].include?(kind) && [:hw, :big, :superbig].include?(planet.kind)
+        log "Distance check #{kind}-#{planet.kind} #{distance_between(planet.x, planet.y, x, y)} <= #{@restrictions[:distance][kind][planet.kind]}"
+        if distance_between(planet.x, planet.y, x, y) <= @restrictions[:distance][kind][planet.kind]
+          log "Restricted distance!"
+          return false
         end
       end
       log "Check overlap: #{distance_between(planet.x, planet.y, x, y)} <= #{(planet.size + size) / 1000 + 0.1}"
