@@ -1,6 +1,7 @@
 class Map
   attr_accessor :size, :players_count, :players, :planets_count, :planets,
-    :zoom, :restrictions, :players_to_size_ratio, :planets_to_players_ratio
+    :zoom, :restrictions, :players_to_size_ratio, :planets_to_players_ratio,
+    :non_overlapping_planets, :hw_size, :dw_size, :debug
 
   def initialize(args = {})
     @planets_probability = {
@@ -19,6 +20,8 @@ class Map
       :big => 10,
       :superbig => 20
     }
+    @hw_size = 1000
+    @dw_size = 500
     @dw_to_hw_min = 5
     @dw_to_hw_max = 15
     @planet_radius = 0.001
@@ -26,13 +29,26 @@ class Map
     @players = []
     @planets = []
     [:players_count, :restrictions, :players_to_size_ratio,
-      :planets_to_players_ratio].each do |parameter|
+      :planets_to_players_ratio, :non_overlapping_planets,
+      :hw_size, :dw_size, :debug].each do |parameter|
       send("#{parameter}=", args[parameter]) if args[parameter]
     end
     @planets_count = @players_count * @planets_to_players_ratio
     @planets_to_place = @planets_count
     @size = @players_count * @players_to_size_ratio
+    log "Map properties:"
+    log("=" * 50)
+    [:size, :players_count, :players, :planets_count, :planets,
+    :zoom, :restrictions, :players_to_size_ratio, :planets_to_players_ratio,
+    :non_overlapping_planets].each do |prop|
+      log "#{prop}=#{send(prop)}"
+    end
+    log("=" * 50)
     generate_map
+  end
+
+  def log(msg)
+    puts msg if @debug
   end
 
   def distance_between(x1, y1, x2, y2)
@@ -133,24 +149,21 @@ class Map
 
   def place_HWs_DWs
     @players.each do |player|
-      x, y = get_coords_for_new :hw
-      add_planet(x: x, y: y, kind: :hw, size: 1000, richness: 10, owner: player)
-      puts "#{player} HW's x, y = #{x}, #{y}"
+      x, y = get_coords_for_new :hw, @hw_size
+      add_planet(x: x, y: y, kind: :hw, size: @hw_size, richness: 10, owner: player)
+      log "#{player} HW's x, y = #{x}, #{y}"
       2.times { place_DW(player, x, y) }
     end
   end
 
   def place_DW(player, x, y)
-    range = @dw_to_hw_min + (SecureRandom.random_number * (@dw_to_hw_max - @dw_to_hw_min))
-    angle = SecureRandom.random_number * 360
-    dwx = (x + (range * Math.cos(angle))).round 2
-    dwy = (y + (range * Math.sin(angle))).round 2
-    add_planet(x: dwx, y: dwy, kind: :dw, size: 500, richness: 10, owner: player)
+    dwx, dwy = get_coords_for_dw(x, y, @dw_size)
+    add_planet(x: dwx, y: dwy, kind: :dw, size: @dw_size, richness: 10, owner: player)
   end
 
   def add_planet(args)
     @planets << Planet.new(args)
-    puts "New planet: #{args[:kind]} [#{args[:x]}, #{args[:y]}] #{args[:size]}"
+    log "New planet: #{args[:kind]} [#{args[:x]}, #{args[:y]}] #{args[:size]}"
     @planets_to_place -= 1
   end
 
@@ -161,26 +174,52 @@ class Map
     size = (chosen[:size].begin + SecureRandom.random_number * delta_size).round 2
     delta_rich = chosen[:richness].end - chosen[:richness].begin
     richness = (chosen[:richness].begin + SecureRandom.random_number * delta_rich).round 2
-    x, y = get_coords_for_new chosen[:kind]
+    x, y = get_coords_for_new chosen[:kind], size
     add_planet(x: x, y: y, kind: chosen[:kind], size: size, richness: richness)
   end
 
-  def get_coords_for_new(kind)
+  def get_coords_for_dw(x, y, size)
+    log "get_coords_for_dw #{x} #{y} #{size}"
+    100.downto 0  do |try|
+      range = @dw_to_hw_min + (SecureRandom.random_number * (@dw_to_hw_max - @dw_to_hw_min))
+      angle = SecureRandom.random_number * 360
+      dwx = (x + (range * Math.cos(angle))).round 2
+      dwy = (y + (range * Math.sin(angle))).round 2
+      return [dwx, dwy] if can_place_planet_at?(dwx, dwy, :dw, size)
+    end
+    raise "Could not place DW"
+  end
+
+  def get_coords_for_new(kind, size)
+    log "get_coords_for_new #{kind} #{size}"
     100.downto 0  do |try|
       x = (SecureRandom.random_number * @size).round 2
       y = (SecureRandom.random_number * @size).round 2
-      return [x, y] if can_place_planet_at?(x, y, kind)
+      return [x, y] if can_place_planet_at?(x, y, kind, size)
     end
     raise "Could not place planet"
   end
 
-  def can_place_planet_at?(x, y, kind)
-    return true unless [:hw, :big, :superbig].include? kind
+  def can_place_planet_at?(x, y, kind, size)
+    log "can_place_planet_at? #{x} #{y} #{kind}"
+    return true unless [:hw, :big, :superbig].include?(kind) || @non_overlapping_planets
     @planets.each do |planet|
-      if planet.kind == :hw || planet.kind == kind
-        return false if distance_between(planet.x, planet.y, x, y) <= @restrictions[:distance][kind]
+      if [:hw, :big, :superbig].include? kind
+        if planet.kind == :hw || planet.kind == kind
+          log "hw, big, superbig #{distance_between(planet.x, planet.y, x, y)} <= #{@restrictions[:distance][kind]}"
+          if distance_between(planet.x, planet.y, x, y) <= @restrictions[:distance][kind]
+            log "Restricted distance!"
+            return false
+          end
+        end
+      end
+      log "Check overlap: #{distance_between(planet.x, planet.y, x, y)} <= #{(planet.size + size) / 1000 + 0.1}"
+      if @non_overlapping_planets && distance_between(planet.x, planet.y, x, y) <= (planet.size + size) / 1000 + 0.1
+        log "Overlap detected!"
+        return false
       end
     end
+    log "Can be placed: OK"
     return true
   end
 
