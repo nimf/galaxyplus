@@ -1,5 +1,5 @@
 class Map
-  attr_accessor :size, :players_count, :players, :planets_count, :planets,
+  attr_accessor :width, :height, :players_count, :players, :planets_count, :planets,
     :zoom, :restrictions, :players_to_size_ratio, :planets_to_players_ratio,
     :non_overlapping_planets, :hw_size, :dw_size,
     :harder_distance_restrictions, :debug
@@ -36,7 +36,7 @@ class Map
     end
     @planets_count = @players_count * @planets_to_players_ratio
     @planets_to_place = @planets_count
-    @size = @players_count * @players_to_size_ratio
+    @width = @height = @players_count * @players_to_size_ratio
     if @harder_distance_restrictions
       @restrictions[:distance] = {
         hw: {hw: 30, big: 10, superbig: 20},
@@ -46,7 +46,7 @@ class Map
     end
     log "Map properties:"
     log("=" * 50)
-    [:size, :players_count, :players, :planets_count, :planets,
+    [:width, :height, :players_count, :players, :planets_count, :planets,
     :zoom, :restrictions, :players_to_size_ratio, :planets_to_players_ratio,
     :non_overlapping_planets].each do |prop|
       log "#{prop}=#{send(prop)}"
@@ -61,16 +61,16 @@ class Map
 
   def distance_between(x1, y1, x2, y2)
     dx = (x1 - x2).abs
-    dx = [dx, @size - dx].min
+    dx = [dx, @width - dx].min
     dy = (y1 - y2).abs
-    dy = [dy, @size - dy].min
+    dy = [dy, @height - dy].min
     Math.sqrt(dx ** 2 + dy ** 2)
   end
 
   def draw(zoom = 4)
     @zoom = zoom
 
-    img = Magick::Image.new(zoomed(@size), zoomed(@size))
+    img = Magick::Image.new(zoomed(@width), zoomed(@height))
     img.background_color = '#FFFFFF'
 
     brush = {
@@ -119,10 +119,10 @@ class Map
 
   def draw_looped(x, y, &block)
     yield x, y
-    yield x + @size, y
-    yield x - @size, y
-    yield x, y + @size
-    yield x, y - @size
+    yield x + @width, y
+    yield x - @width, y
+    yield x, y + @height
+    yield x, y - @height
   end
 
   def draw_circle_looped(img, drawing, x, y, radius)
@@ -136,7 +136,7 @@ class Map
   end
 
   def generate_map
-    puts "Generating map of size #{@size} with #{@planets_count} for #{@players_count} players..."
+    puts "Generating map of size #{@width}x#{@height} with #{@planets_count} planets for #{@players_count} players..."
 
     create_players
 
@@ -201,8 +201,8 @@ class Map
   def get_coords_for_new(kind, size)
     log "get_coords_for_new #{kind} #{size}"
     100.downto 0  do |try|
-      x = (SecureRandom.random_number * @size).round 2
-      y = (SecureRandom.random_number * @size).round 2
+      x = (SecureRandom.random_number * @width).round 2
+      y = (SecureRandom.random_number * @height).round 2
       return [x, y] if can_place_planet_at?(x, y, kind, size)
     end
     raise "Could not place planet"
